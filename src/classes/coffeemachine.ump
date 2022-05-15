@@ -1,0 +1,232 @@
+class UserInterface
+{
+	ContainmentVessel cv = null;
+    HotWaterSource hws = null;
+    
+  	boolean isComplete = true;
+  	public void init(HotWaterSource hws, ContainmentVessel cv) {
+		this.hws = hws;
+		this.cv = cv;
+		}
+      public void complete() {
+        isComplete = true;
+        completeCycle();
+      }
+      protected void startBrewing() {
+      if (hws.isReady() && cv.isReady()) {
+        isComplete = false;
+        hws.start();
+        cv.start();
+      }
+      }
+      public abstract void done();
+      public abstract void completeCycle();
+}
+
+class ContainmentVessel
+{
+	UserInterface ui = null;
+    HotWaterSource hws = null;
+    
+    boolean isBrewing = false;
+    boolean isComplete = true;
+    
+    public void init(UserInterface ui, HotWaterSource hws) {
+		this.ui = ui;
+		this.hws = hws;
+	}
+    public void start() {
+      isBrewing = true;
+      isComplete = false;
+    }
+    public void done() {
+      isBrewing = false;
+    }
+    protected void declareComplete() {
+      isComplete = true;
+      ui.complete();
+    }
+    protected void containerAvailable() {
+      hws.resume();
+    }
+    protected void containerUnavailable() {
+      hws.pause();
+    }
+    public abstract boolean isReady();
+  
+  
+}
+
+class HotWaterSource
+{
+	UserInterface ui = null;
+    ContainmentVessel cv = null;
+    
+    boolean isBrewing = false;
+
+
+	public void init(UserInterface ui, ContainmentVessel cv) {
+		this.ui = ui;
+		this.cv = cv;
+	}
+    public void start() {
+      isBrewing = true;
+      startBrewing();
+    }
+    public void done() {
+      isBrewing = false;
+    }
+    protected void declareDone() {
+      ui.done();
+      cv.done();
+      isBrewing = false;
+    }
+    public abstract boolean isReady();
+    public abstract void startBrewing();
+    public abstract void pause();
+    public abstract void resume();
+}
+
+class M4ContainmentVessel
+{
+  CoffeeMakerAPI api;
+  int lastPotStatus = 1; //POT_EMPTY
+  
+  isA ContainmentVessel;
+  isA Pollable;
+
+  public boolean isReady() {
+    int plateStatus = api.getWarmerPlateStatus();
+    return plateStatus == api.POT_EMPTY;
+  }
+  public void poll() {
+    int potStatus = api.getWarmerPlateStatus();
+    if (potStatus != lastPotStatus) {
+      if (super.getIsBrewing()) {
+        handleBrewingEvent(potStatus);
+      } 
+      else if (super.getIsComplete() == false) {
+        handleIncompleteEvent(potStatus);
+      }
+      lastPotStatus = potStatus;
+    }
+  }
+  private void handleBrewingEvent(int potStatus) {
+    if (potStatus == api.POT_NOT_EMPTY) {
+      containerAvailable();
+      api.setWarmerState(api.WARMER_ON);
+    } 
+    else if (potStatus == api.WARMER_EMPTY) {
+      containerUnavailable();
+      api.setWarmerState(api.WARMER_OFF);
+    } 
+    else { // potStatus == api.POT_EMPTY
+      containerAvailable();
+      api.setWarmerState(api.WARMER_OFF);
+    }
+  }
+  private void handleIncompleteEvent(int potStatus) {
+    if (potStatus == api.POT_NOT_EMPTY) {
+      api.setWarmerState(api.WARMER_ON);
+    } 
+    else if (potStatus == api.WARMER_EMPTY) {
+      api.setWarmerState(api.WARMER_OFF);
+    } 
+    else { // potStatus == api.POT_EMPTY
+      api.setWarmerState(api.WARMER_OFF);
+      declareComplete();
+    }
+  }
+}
+
+class M4HotWaterSource
+{
+  CoffeeMakerAPI api;
+  isA HotWaterSource;
+  isA Pollable;
+  public boolean isReady() {
+	int boilerStatus = api.getBoilerStatus();
+	return boilerStatus == api.BOILER_NOT_EMPTY;
+	}
+	public void startBrewing() {
+		api.setReliefValveState(api.VALVE_CLOSED);
+		api.setBoilerState(api.BOILER_ON);
+	}
+	public void poll() {
+		int boilerStatus = api.getBoilerStatus();
+			if (super.getIsBrewing()) {
+			if (boilerStatus == api.BOILER_EMPTY) {
+				api.setBoilerState(api.BOILER_OFF);
+				api.setReliefValveState(api.VALVE_CLOSED);
+				declareDone();
+		}
+		}
+	}
+	  public void pause() {
+		api.setBoilerState(api.BOILER_OFF);
+		api.setReliefValveState(api.VALVE_OPEN);
+	}
+	public void resume() {
+		api.setBoilerState(api.BOILER_ON);
+		api.setReliefValveState(api.VALVE_CLOSED);
+	}
+}
+
+interface Pollable
+{
+  void poll();
+
+}
+
+class M4UserInterface
+{
+  CoffeeMakerAPI api;
+  isA UserInterface;
+  isA Pollable;
+  
+  public void poll() {
+    int buttonStatus = api.getBrewButtonStatus();
+    if (buttonStatus == api.BREW_BUTTON_PUSHED) {
+      startBrewing();
+    }
+  }
+  public void done() {
+    api.setIndicatorState(api.INDICATOR_ON);
+  }
+  public void completeCycle() {
+    api.setIndicatorState(api.INDICATOR_OFF);
+  }
+}
+
+class CoffeeMakerAPI
+{
+  int warmerPlateStatus;
+  int boilerStatus;
+  int brewButtonStatus;
+  int boilerState;
+  int warmerState;
+  int indicatorState;
+  int reliefValveState;
+  
+  const int WARMER_EMPTY = 0;
+  const int POT_EMPTY = 1;
+  const int POT_NOT_EMPTY = 2;
+  
+  const int BOILER_EMPTY = 0;
+  const int BOILER_NOT_EMPTY = 1;
+  
+  const int BREW_BUTTON_PUSHED = 0;
+  const int BEW_BUTTON_NOT_PUSHED = 1;
+  
+  const int BOILER_ON = 0;
+  const int BOILER_OFF = 1;
+  
+  const int WARMER_ON = 0;
+  const int WARMER_OFF = 1;
+  
+  const int INDICATOR_ON = 0;
+  const int INDICATOR_OFF = 1;
+  
+  const int VALVE_OPEN = 0;
+  const int VALVE_CLOSED = 1;
+}
